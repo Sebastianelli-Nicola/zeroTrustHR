@@ -1,61 +1,107 @@
-# ZeroTrustHR
+# ZeroTrustHR 
 
-Un'architettura Zero Trust all'avanguardia per la gestione sicura delle risorse umane. Il sistema implementa una valutazione dinamica del rischio in tempo reale basata su Machine Learning e analisi del traffico di rete, garantendo una difesa adattiva
+[![Architecture: Zero Trust](https://img.shields.io/badge/Architecture-Zero%20Trust-blue.svg)](#-system-architecture)
+[![Containerized: Docker](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](#-setup--deployment)
+[![Security: mTLS | OPA | Snort3](https://img.shields.io/badge/Security-mTLS%20%7C%20OPA%20%7C%20Snort3-brightgreen.svg)](#-system-architecture)
+[![SIEM & ML: Splunk AITK](https://img.shields.io/badge/SIEM_%26_ML-Splunk_Random_Forest-orange.svg)](#-dynamic-risk-calculation-model)
+[![Report: PDF](https://img.shields.io/badge/Project_Report-PDF_(ITA)-red.svg)](./Tesina_ADV.pdf)
 
----
+A state-of-the-art **Zero Trust Architecture** designed for secure Human Resources (HR) and enterprise operations. The system implements **real-time dynamic risk assessment** driven by Machine Learning (**Splunk AI Toolkit**), deep network traffic inspection (**Snort 3**), hardware-bound device identity (**TPM & Secure Enclave**), and fine-grained policy enforcement (**OPA & Envoy**).
 
-## Architettura del Sistema
-
-L'architettura Zero Trust si fonda su componenti chiave che collaborano per calcolare il rischio in tempo reale:
-
-- **PEP (Policy Enforcement Point) - Envoy Proxy**: Funge da gateway perimetrale con autenticazione mTLS, respingendo attacchi grossolani ancor prima che raggiungano il backend.
-- **PDP (Policy Decision Point) - OPA (Open Policy Agent)**: Valuta ogni singola richiesta in base a policy dinamiche, calcolando l'impatto e interrogando il modello di rischio.
-- **Motore di Rischio e SIEM - Splunk**: Raccoglie tutti i log via HTTP Event Collector (HEC). Ospita il modello di Machine Learning (*Random Forest*) per calcolare la Probabilità Applicativa ($P_{app}$) analizzando i comportamenti anomali (es. orari insoliti, ruoli non autorizzati).
-- **IDS (Intrusion Detection System) - Snort 3**: Monitora il traffico di rete. Quando rileva anomalie infrastrutturali (es. Port Scanning), alza drasticamente la Probabilità di Rete ($P_{net}$).
-- **Firewall L3/L4 - nftables**: Gestisce la sicurezza e il logging a livello di rete basale.
-- **Backend (Node.js/TS) & Frontend (React/Vite)**: Gestiscono la logica di business e l'interfaccia utente sicura per il dipartimento HR.
-- **CA Interna**: Gestisce l'emissione dei certificati per l'autenticazione dei dispositivi sicuri (mTLS).
+>  **Full Technical Documentation:** Read the complete 81-page master's course report (in Italian), including architecture diagrams, Rego policies, TPM/Secure Enclave enrollment flows, and test results: **[Read Complete Technical Report (PDF)](./Tesina_ADV_.pdf)**.
 
 ---
 
-## Strumenti e Tecnologie
+##  System Architecture
 
-- **Docker & Docker Compose**: Containerizzazione dell'intera infrastruttura per una facile riproducibilità.
-- **Node.js & TypeScript**: Backend API e microservizio CA interno.
-- **React & Vite**: Frontend reattivo e veloce.
-- **MongoDB**: Database NoSQL per la conservazione sicura dei dati HR.
-- **OPA (Open Policy Agent)**: Motore di regole per l'autorizzazione a grana fine e il calcolo dell'impatto.
-- **Envoy Proxy**: Edge proxy ad alte prestazioni e gestione mTLS.
-- **Splunk**: SIEM centralizzato, dashboard e Machine Learning Toolkit (AITK).
-- **Snort 3**: Intrusion Detection System per l'ispezione profonda dei pacchetti.
-- **nftables**: Firewall di rete avanzato.
-- **Kali Linux**: Ambiente (via container) dedicato per simulazioni avanzate di attacchi di rete.
+The Zero Trust infrastructure relies on decoupled security components collaborating in real time to evaluate and enforce trust on every single request:
+
+<pre>
+                  [ Client / Device Agent ]
+                            │
+                            ▼
+            ┌───────────────────────────────┐
+            │   nftables (L3/L4 Firewall)   │
+            └───────────────┬───────────────┘
+                            │ (mTLS verified by Internal CA)
+                            ▼
+           ┌─────────────────────────────────┐
+           │   PEP: Envoy Proxy (Gateway)    │ ◄───┐
+           └───────────────┬─────────────────┘     │
+                           │ Checks Policy         │ Real-time
+                           ▼                       │ Risk Score
+            ┌──────────────────────────────┐       │
+            │   PDP: Open Policy Agent     │ ──────┤
+            └───────────────┬──────────────┘       │
+                           │ Evaluates             │
+                           ▼                       │
+            ┌──────────────────────────────┐       │
+            │   Backend: Node.js / TS      │       │
+            └───────────────┬──────────────┘       │
+                           │                       │
+                           ▼                       │
+            ┌──────────────────────────────┐       │
+            │   Database: MongoDB (Data)   │       │
+            └──────────────────────────────┘       │
+                                                   │
+  ────────────────── Telemetry & Risk ─────────────┼─
+                                                   │
+   [ Snort 3 IDS ] ──> Network Anomalies (Pnet) ───┤
+                                                   │
+   [ Splunk SIEM ] ──> ML Risk Engine (Papp)  ─────┘
+                       (Random Forest via HEC)
+</pre>
+
+### Core Components
+* **PEP (Policy Enforcement Point) — Envoy Proxy:** Perimeter edge gateway enforcing **mutual TLS (mTLS)** authentication, rejecting unauthorized requests at L4/L7 before reaching the backend.
+* **PDP (Policy Decision Point) — OPA (Open Policy Agent):** Evaluates every API request against fine-grained dynamic Rego policies, computing resource impact and querying the live risk engine.
+* **Risk Engine & SIEM — Splunk:** Collects centralized telemetry logs via HTTP Event Collector (HEC). Hosts the **Random Forest** Machine Learning model (*Splunk AI Toolkit*) to compute Application Probability ($P_{app}$).
+* **IDS (Intrusion Detection System) — Snort 3:** Monitors raw network traffic via deep packet inspection. Detects infrastructural anomalies (e.g., Port Scanning) and escalates Network Probability ($P_{net}$).
+* **L3/L4 Firewall — nftables:** Manages baseline network-level packet filtering, isolation, and kernel audit logging.
+* **Internal CA & Device Agents:** Issues X.509 certificates (`ca-service`) and manages hardware-bound device identity verification (`TPM` for Windows, `Secure Enclave` for macOS, plus software fallback with JA3 fingerprinting).
+* **Application Layer (`Node.js/TS` & `React/Vite`):** Handles HR business logic, device enrollment flows, and provides a secure, responsive interface backed by **MongoDB**.
 
 ---
 
-## Modello di Calcolo del Rischio
+##  Dynamic Risk Calculation Model
 
-Il cuore dell'architettura è la valutazione matematica e continua della minaccia, calcolata per ogni singola richiesta:
+Continuous mathematical threat evaluation computed for every incoming request:
 
-**Rischio Totale = max($P_{app}$, $P_{net}$) × Impatto**
+$$\text{Total Risk} = \max(P_{app}, P_{net}) \times \text{Impact}$$
 
-Dove:
-- **$P_{app}$ (Probabilità Applicativa)**: È calcolata in tempo reale dal modello di Machine Learning (*Random Forest*) ospitato su Splunk. Il modello analizza lo storico degli accessi (es. tentativi fuori orario, richieste verso reparti non autorizzati, dispositivi non attendibili) e assegna una probabilità di anomalia comportamentale tra 0 e 1.
-- **$P_{net}$ (Probabilità di Rete)**: Subentra quando l'infrastruttura subisce un attacco diretto (es. Port Scanning). Viene innalzata automaticamente dall'IDS (Snort) nel momento in cui rileva un'offesa; questo valore di allerta (es. $P_{net} = 0.95$) bypassa le normali valutazioni applicative per garantire il blocco immediato della sorgente ostile.
-- **Impatto**: Misura il potenziale danno nel caso in cui la richiesta dovesse avere successo in modo illecito. Viene determinato dinamicamente in base alla **criticità della risorsa** richiesta (ad esempio, leggere i *dati finanziari* ha un impatto alto, ma tentare di modificarli ha un impatto massimo) e ai **privilegi dell'utente** (la compromissione di un *amministratore* aggiunge una penalità extra, aggravando l'impatto complessivo).
+* **$P_{app}$ (Application Probability $\in [0, 1]$):** Computed in real time by the **Random Forest** classifier on Splunk based on historical and live access patterns (`total_denies`, `time_denies`, `priv_denies`, `auth_denies`, `distinct_ips`, `deny_ratio`).
+* **$P_{net}$ (Network Probability $\in [0, 1]$):** Triggered by direct network exploitation (e.g., Nmap SYN Port Scanning) and automatically escalated by **Snort 3** (e.g., $P_{net} = 0.95$).
+* **$\text{Impact}$:** Quantifies potential damage via decoupled Splunk lookup tables (`resource_impact.csv` and `asset_weights.csv`) based on resource sensitivity (`public_products`, `company_policies`, `employee_records`) and user privileges.
+* **BARAC Adaptive Blocking & Fail-Closed:** Integrates Benefit-Aware Risk Access Control (BARAC) via Splunk saved searches and webhooks (`/api/splunk-webhook`) to dynamically block compromised identities, defaulting to a `Fail-Closed` posture under volumetric DoS attacks.
 
 ---
 
-## Configurazione e Avvio
+##  Tech Stack & Tools
 
-### Prerequisiti
-- **Docker** e **Docker Compose** installati.
-- (Opzionale ma necessario per la demo) Scaricare da [Splunkbase](https://splunkbase.splunk.com/) (richiede account gratuito):
-  - Splunk AI Toolkit (AITK)
-  - Python for Scientific Computing (Linux 64-bit)
+| Layer | Technologies |
+| :--- | :--- |
+| **Containerization** | Docker & Docker Compose (`zerotrust_net` & `wan_net` isolation) |
+| **Edge Proxy & PKI** | Envoy Proxy (`ext_authz` + mTLS), Custom Internal CA (`Node.js/TS`), X.509 Certificates |
+| **Hardware Identity** | Windows TPM Agent (`.NET 8`), macOS Secure Enclave Agent (`Swift/Xcode`), JA3 Fallback |
+| **Policy Engine** | Open Policy Agent (OPA) — Declarative Rego Policies (`access`, `user`, `device`, `risk`) |
+| **SIEM & ML** | Splunk Enterprise, HTTP Event Collector (HEC), Custom `zerotrust_app` (CaC), Splunk AI Toolkit (AITK) |
+| **Network Security** | Snort 3 (IDS), nftables (L3/L4 Host/Bridge Firewall on WSL2) |
+| **Application Stack** | Node.js, TypeScript, Express, React, Vite, MongoDB, JWT |
+| **Adversary Emulation** | Kali Linux, Nmap, THC-Hydra, Postman, Custom Python Attack Scripts |
 
-### 1. Configurazione Iniziale
-Creare un file `.env` nella directory root del progetto. Puoi usare i seguenti valori di base per lo sviluppo:
+---
+
+##  Setup & Deployment
+
+### Prerequisites
+* **Docker** & **Docker Compose** installed.
+* *(Optional for ML live demo)* Download from [Splunkbase](https://splunkbase.splunk.com/):
+  * **Splunk AI Toolkit (AITK)**
+  * **Python for Scientific Computing (Linux 64-bit)**
+
+### 1. Initial Configuration
+Create a `.env` file in the root directory:
+
 ```env
 MONGO_ROOT_USER=admin
 MONGO_ROOT_PASSWORD=ZeroTrust2026!
@@ -66,19 +112,19 @@ JWT_SECRET=dev_jwt_secret_zerotrust_2026
 SPLUNK_WEBHOOK_SECRET=dev_webhook_secret_zerotrust_2026
 ```
 
-### 2. Avvio dei Servizi
-Dal terminale (es. PowerShell), ferma eventuali istanze precedenti, pulisci i volumi e avvia il sistema:
+### 2. Start Services
 ```bash
 docker-compose down -v
 docker-compose up --build -d
 ```
-*Attendi qualche minuto affinché Splunk sia online su `http://localhost:8000`.*
+*(Wait a few minutes for Splunk to initialize at `http://localhost:8000`)*
 
-### 3. Setup delle App di Machine Learning
-Installa i pacchetti bypassando l'interfaccia web per evitare timeout (sostituisci i percorsi con quelli reali in cui hai scaricato i `.tgz`):
+### 3. Machine Learning Apps Setup (Splunk CLI)
+Install the downloaded `.tgz` packages directly into the container to avoid web UI timeouts:
+
 ```bash
-docker cp "C:\Percorso\python-for-scientific-computing.tgz" zerotrust-splunk:/tmp/
-docker cp "C:\Percorso\splunk-ai-toolkit.tgz" zerotrust-splunk:/tmp/
+docker cp "C:\Path\To\python-for-scientific-computing.tgz" zerotrust-splunk:/tmp/
+docker cp "C:\Path\To\splunk-ai-toolkit.tgz" zerotrust-splunk:/tmp/
 
 docker exec -u root zerotrust-splunk /opt/splunk/bin/splunk install app /tmp/python-for-scientific-computing.tgz -update 1 -auth admin:ZeroTrust2026!
 docker exec -u root zerotrust-splunk /opt/splunk/bin/splunk install app /tmp/splunk-ai-toolkit.tgz -update 1 -auth admin:ZeroTrust2026!
@@ -88,44 +134,50 @@ docker-compose restart splunk
 
 ---
 
-##  Guide alle Simulazioni e Test di Splunk
+##  Attack Simulations & Testing Guides
 
-Il progetto include script e configurazioni specifiche per dimostrare la resilienza dell'architettura in vari scenari.
+### Phase 1: Model Training (Behavioral Analysis)
+Generate mixed legitimate (80%) and hostile (20%) traffic to train the Random Forest classifier (`app_risk_model`) on Splunk:
 
-### Fase 1: Addestramento del Modello (Behavioral Analysis)
-Simula traffico legittimo misto ad attacchi per addestrare il classificatore Random Forest su Splunk a distinguere i comportamenti ostili:
 ```bash
 python scripts/simulate_auth_attacks.py
 ```
-Successivamente, su Splunk, lancia la query SQL dedicata (descritta nella [Guida Demo](demo_guide.md)) per istruire e salvare il modello `app_risk_model`.
 
-### Fase 2: Blocco Dinamico Predittivo (Live Demo)
-Lancia la simulazione live per vedere l'infrastruttura reagire in tempo reale:
+### Phase 2: Predictive Dynamic Blocking (Live Demo)
+Run the real-time attack simulation to observe dynamic risk escalation and OPA blocking (`risk_score_too_high`):
+
 ```bash
 python scripts/demo_live_attacks.py
 ```
-Gli utenti normali avranno un punteggio di rischio basso, mentre quelli ostili vedranno incrementare il loro livello fino al blocco preventivo. Sotto attacco massivo, il sistema passa in modalità di auto-protezione (**Fail-Closed**).
 
-### Fase 3: Attacchi Infrastrutturali (Network & IDS)
-Utilizza container isolati per sferrare attacchi simulati (fare riferimento a [Guida Attacchi Rete](scripts/network_attacks_guide.md)):
-
-**Port Scanning (Nmap):** Intercettato da Snort, innalza drasticamente la Probabilità di Rete ($P_{net}$) dell'attaccante.
-```bash
-docker run --rm --network zerotrusthr_zerotrust_net instrumentisto/nmap -sS -p- -T4 zerotrust-envoy
-```
-
-**Brute Force su mTLS (Hydra):** Viene respinto nativamente al livello L4/L7 dall'Edge Proxy.
-```bash
-docker run --rm -v "${PWD}/passwords.txt:/passwords.txt" --network zerotrusthr_zerotrust_net secsi/hydra -l admin -P /passwords.txt -s 10000 zerotrust-envoy http-post-form "/api/auth/login:username=^USER^&password=^PASS^:F=Unauthorized"
-```
-
-
-## Guide alle simluzioni e test su nftables
-
-Guardare il file [README.md](nftables/README.md).
+### Phase 3: Infrastructural & Perimeter Attacks (Network & IDS)
+* **Port Scanning (Nmap):** Intercepted by **Snort 3**, raising the attacker's Network Probability ($P_{net}$):
+  ```bash
+  docker run --rm --network zerotrusthr_zerotrust_net instrumentisto/nmap -sS -p- -T4 zerotrust-envoy
+  ```
+* **Brute Force over mTLS (Hydra):** Natively rejected at the TLS layer by **Envoy Proxy** due to missing client certificates:
+  ```bash
+  docker run --rm -v "${PWD}/passwords.txt:/passwords.txt" --network zerotrusthr_zerotrust_net secsi/hydra -l admin -P /passwords.txt -s 10000 zerotrust-envoy http-post-form "/api/auth/login:username=^USER^&password=^PASS^:F=Unauthorized"
+  ```
 
 ---
 
 > [!TIP]
-> **Documentazione Completa**
-> Per maggiori approfondimenti e istruzioni estese passo-passo, fai riferimento ai file [demo_guide.md](demo_guide.md) e [network_attacks_guide.md](scripts/network_attacks_guide.md).
+> **Extended Documentation**
+> For step-by-step walkthroughs and SPL queries, refer to:
+> *  **[Full Academic Report — Tesina_ADV.pdf](./Tesina_ADV.pdf)**
+> *  **[Live Demo Guide (demo_guide.md)](./demo_guide.md)**
+> *  **[Network Attacks Guide (scripts/network_attacks_guide.md)](./scripts/network_attacks_guide.md)**
+> *  **[nftables Firewall Guide (nftables/README.md)](./nftables/README.md)**
+
+---
+
+##  Authors & Academic Context
+
+Developed as a Master's Degree project for the **Advanced Cybersecurity for IT** course (9 CFU, A.Y. 2025/2026) — M.Sc. in **Computer and Automation Engineering** at **Università Politecnica delle Marche (UNIVPM)**, under the supervision of **Prof. Luca Spalazzi**.
+
+* **Nicola Sebastianelli** — [GitHub](https://github.com/Sebastianelli-Nicola)
+* **Antonio Di Placido**
+* **Pietro Salvatore** — [Original Repository](https://github.com/Pi3tro02/zeroTrustHR)
+* **Daniel Diocis**
+* **Daniele Giuliani**
